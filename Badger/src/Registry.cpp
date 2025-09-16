@@ -1,6 +1,5 @@
 #include "Badger/Registry.h"
 #include <fstream>
-#include <sstream>
 #include <set>
 
 namespace WPEFramework {
@@ -13,58 +12,74 @@ std::unique_ptr<Registry> Registry::LoadFromFile(const string& path, string& err
         return nullptr;
     }
     auto reg = std::unique_ptr<Registry>(new Registry());
-    // Extremely simple, line-based parser tailored to example YAML in repo attachments.
-    // Supports keys: id, capabilities: use/manage/provide lists, apis list.
+    // Simple, robust-enough line-based parser for expected YAML subset:
+    // permissions:
+    //   - id: "DATA_timeZone"
+    //     capabilities:
+    //       use:
+    //         - "cap1"
+    //       manage: []
+    //       provide: []
+    //     apis:
+    //       - "api.name"
     RegistryEntry current;
     bool inPermissionsList = false;
     bool inCapabilities = false;
     bool inApis = false;
     string role; // "use", "manage", "provide"
 
-    string line;
-    while (std::getline(in, line)) {
-        const string t = trim(line);
-        if (t.empty()) continue;
+    string raw;
+    while (std::getline(in, raw)) {
+        const string t = trim(raw);
+        if (t.empty() || t[0] == '#') {
+            continue;
+        }
         if (starts_with(t, "permissions:")) {
             inPermissionsList = true;
             continue;
         }
         if (inPermissionsList && starts_with(t, "- id:")) {
-            // If we already have an entry, push it.
+            // Flush previous entry
             if (!current.id.empty()) {
                 reg->_entries.push_back(current);
                 current = RegistryEntry{};
             }
-            current.id = trim(t.substr(std::string("- id:").size()));
-            // Strip quotes if present
-            if (!current.id.empty() && (current.id.front()=='"' || current.id.front()=='\'')) {
-                current.id = current.id.substr(1, current.id.size()-2);
+            string value = trim(t.substr(std::string("- id:").size()));
+            if (!value.empty() && (value.front()=='"' || value.front()=='\'')) {
+                value = value.substr(1, value.size() > 1 ? value.size()-2 : 0);
             }
+            current.id = value;
+            inCapabilities = false;
+            inApis = false;
+            role.clear();
             continue;
         }
         if (starts_with(t, "capabilities:")) {
             inCapabilities = true;
             inApis = false;
+            role.clear();
             continue;
         }
         if (inCapabilities && (starts_with(t, "use:") || starts_with(t, "manage:") || starts_with(t, "provide:"))) {
             if (starts_with(t, "use:")) role = "use";
             else if (starts_with(t, "manage:")) role = "manage";
             else role = "provide";
+            // might be "[]", treat as empty
             continue;
         }
         if (starts_with(t, "apis:")) {
             inApis = true;
             inCapabilities = false;
+            role.clear();
             continue;
         }
         // list items
         if (starts_with(t, "- ")) {
             string value = trim(t.substr(2));
             if (!value.empty() && (value.front()=='"' || value.front()=='\'')) {
-                value = value.substr(1, value.size()-2);
+                value = value.substr(1, value.size() > 1 ? value.size()-2 : 0);
             }
-            if (inCapabilities) {
+            if (inCapabilities && !role.empty()) {
                 if (role == "use") current.useCaps.push_back(value);
                 else if (role == "manage") current.manageCaps.push_back(value);
                 else if (role == "provide") current.provideCaps.push_back(value);
@@ -73,7 +88,20 @@ std::unique_ptr<Registry> Registry::LoadFromFile(const string& path, string& err
             }
             continue;
         }
+        // tolerate empty lists like "manage: []"
+        if (inCapabilities && (starts_with(t, "use:") || starts_with(t, "manage:") || starts_with(t, "provide:"))) {
+            auto colon = t.find(':');
+            if (colon != string::npos) {
+                string key = t.substr(0, colon);
+                string tail = trim(t.substr(colon+1));
+                if (is_empty_list(tail)) {
+                    // nothing to add
+                }
+            }
+            continue;
+        }
     }
+
     if (!current.id.empty()) {
         reg->_entries.push_back(current);
     }
@@ -146,6 +174,11 @@ string Registry::trim(const string& s) {
 
 bool Registry::starts_with(const string& s, const string& p) {
     return s.rfind(p, 0) == 0;
+}
+
+bool Registry::is_empty_list(const string& s) {
+    const string t = trim(s);
+    return (t == "[]" || t == "[ ]");
 }
 
 } // namespace Plugin

@@ -17,14 +17,18 @@ struct RegistryEntry {
 
 /**
  * Registry loads and provides lookups for permission mappings from a YAML-like source.
- * For this implementation, we parse a minimal subset of YAML using a naive line-based parser
- * sufficient for expected simple files; in production, link a proper YAML parser.
+ * This implementation parses a constrained subset of YAML that matches the project's
+ * thor_permission_registry.yaml format (keys: id, capabilities:{use/manage/provide}, apis).
+ * For production usage, wire a fully-featured YAML parser and keep this interface stable.
  */
 class Registry {
 public:
     // PUBLIC_INTERFACE
     /**
      * Load registry from a file path.
+     * @param path  The absolute or relative path to the YAML file.
+     * @param errorOut Populated on failure with a human-readable description.
+     * @return unique_ptr<Registry> on success, nullptr on failure.
      */
     static std::unique_ptr<Registry> LoadFromFile(const string& path, string& errorOut);
 
@@ -63,6 +67,7 @@ private:
 
     static string trim(const string& s);
     static bool starts_with(const string& s, const string& p);
+    static bool is_empty_list(const string& s); // detect [] or [ ] convenience
 };
 
 } // namespace Plugin

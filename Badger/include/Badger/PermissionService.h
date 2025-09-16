@@ -7,9 +7,14 @@ namespace Plugin {
 
 /**
  * PermissionService
- * Evaluates permission checks using a dynamic granted set and static mappings from Registry.
- * This simplified version assumes dynamic grants are provided via configuration or mocked.
- * In production, integrate with Thor backend to fetch grants per (app/session).
+ *
+ * Evaluates permission checks:
+ * - Maps Firebolt capability + role to Thor/Badger permission IDs via Registry.
+ * - Intersects with a dynamic granted set (runtime/config sourced).
+ * - Answers allow/deny and listing calls.
+ *
+ * Note: Dynamic grant fetching (e.g., TPS/gRPC) is not implemented here. The granted IDs
+ * are set via SetGrantedIds (from configuration or future extension point).
  */
 class PermissionService {
 public:
@@ -29,13 +34,13 @@ public:
 
     // PUBLIC_INTERFACE
     /**
-     * List current capabilities derived from granted IDs through the registry mapping.
+     * List current capabilities derived from granted IDs through registry mapping (union across roles).
      */
     std::vector<string> ListCapabilities() const;
 
     // PUBLIC_INTERFACE
     /**
-     * List current raw Thor/Badger permission IDs.
+     * List current raw Thor/Badger permission IDs (the granted set).
      */
     std::vector<string> ListFireboltPermissions() const;
 

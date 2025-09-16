@@ -1,5 +1,6 @@
 #include "Badger/PermissionService.h"
 #include <algorithm>
+#include <cctype>
 
 namespace WPEFramework {
 namespace Plugin {
@@ -54,7 +55,7 @@ std::unordered_set<string> PermissionService::GetGrantedIds() const {
 
 string PermissionService::ToLower(const string& s) {
     string out = s;
-    std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c){ return std::tolower(c); });
+    std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
     return out;
 }
 

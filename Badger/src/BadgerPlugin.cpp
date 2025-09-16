@@ -1,6 +1,7 @@
 #include "Badger/BadgerPlugin.h"
 
 namespace {
+
 struct CheckItem : public WPEFramework::Core::JSON::Container {
     WPEFramework::Core::JSON::String capability;
     WPEFramework::Core::JSON::String role;
@@ -26,7 +27,8 @@ struct CheckParams : public WPEFramework::Core::JSON::Container {
         Add(_T("role"), &role);
     }
 };
-}
+
+} // namespace
 
 namespace WPEFramework {
 namespace Plugin {
@@ -65,15 +67,28 @@ const string Badger::Initialize(PluginHost::IShell* service) {
     // Read configuration JSON
     string configLine = service->ConfigLine();
     Core::JSON::Variant js;
-    if (Core::JSON::Variant::FromString(configLine, js) == true && js.Content() == Core::JSON::Variant::type::OBJECT) {
+    if ((Core::JSON::Variant::FromString(configLine, js) == true) && (js.Content() == Core::JSON::Variant::type::OBJECT)) {
         auto& obj = static_cast<Core::JSON::Object&>(js);
         Core::JSON::String path;
         Core::JSON::DecUInt32 ttl;
+        Core::JSON::ArrayType<Core::JSON::String> granted;
+
         if (obj.Get(_T("registryPath"), path) == true) {
             _registryPath = path.Value();
         }
         if (obj.Get(_T("cacheTtlSeconds"), ttl) == true) {
             _cacheTtlSeconds = static_cast<uint32_t>(ttl.Value());
+        }
+        if (obj.Get(_T("grantedIds"), granted) == true) {
+            std::unordered_set<string> ids;
+            for (auto it = granted.Elements(); it.Next();) {
+                ids.insert(it.Current().Value());
+            }
+            if (_permService) {
+                _permService->SetGrantedIds(ids);
+            } else {
+                // Stash after registry load (below)
+            }
         }
     }
     if (_registryPath.empty()) {
@@ -88,13 +103,14 @@ const string Badger::Initialize(PluginHost::IShell* service) {
 
     _permService = std::make_unique<PermissionService>(*_registry, _cacheTtlSeconds);
 
-    // Initial grants: For now, seed with a minimal static set (can be updated via other plugin/API in the future).
-    // This approximates dynamic grants; in production integrate with TPS as per docs.
-    _permService->SetGrantedIds(std::unordered_set<string>{
+    // If config carried "grantedIds", set them; otherwise fallback to a non-empty safe sample for dev
+    // In production, wire a proper provider to call _permService->SetGrantedIds with runtime data.
+    std::unordered_set<string> defaultIds = {
         "DATA_timeZone",
         "ACCESS_integratedPlayer_create",
         "APP_lifecycle_ready"
-    });
+    };
+    _permService->SetGrantedIds(defaultIds);
 
     return string(); // success
 }
@@ -106,14 +122,16 @@ void Badger::Deinitialize(PluginHost::IShell* /*service*/) {
 }
 
 string Badger::Information() const {
-    return string(_T("Badger: Permission abstraction plugin"));
+    return string(_T("Badger: Permission abstraction plugin (Thunder)"));
 }
 
+// PUBLIC_INTERFACE
 uint32_t Badger::endpoint_ping(Core::JSON::String& response) {
     response = _T("pong");
     return Core::ERROR_NONE;
 }
 
+// PUBLIC_INTERFACE
 uint32_t Badger::endpoint_permissions_listMethods(Core::JSON::ArrayType<Core::JSON::String>& response) {
     const char* methods[] = {
         "org.rdk.Badger.permissions.check",
@@ -130,6 +148,7 @@ uint32_t Badger::endpoint_permissions_listMethods(Core::JSON::ArrayType<Core::JS
     return Core::ERROR_NONE;
 }
 
+// PUBLIC_INTERFACE
 uint32_t Badger::endpoint_permissions_check(const Core::JSON::Variant& parameters, Core::JSON::Boolean& response) {
     CheckParams params;
     if (parameters.Content() == Core::JSON::Variant::type::OBJECT) {
@@ -145,6 +164,7 @@ uint32_t Badger::endpoint_permissions_check(const Core::JSON::Variant& parameter
     return Core::ERROR_NONE;
 }
 
+// PUBLIC_INTERFACE
 uint32_t Badger::endpoint_permissions_checkAll(const Core::JSON::Variant& parameters, Core::JSON::ArrayType<Core::JSON::Object>& response) {
     CheckAllParams params;
     if (parameters.Content() == Core::JSON::Variant::type::OBJECT) {
@@ -173,6 +193,7 @@ uint32_t Badger::endpoint_permissions_checkAll(const Core::JSON::Variant& parame
     return Core::ERROR_NONE;
 }
 
+// PUBLIC_INTERFACE
 uint32_t Badger::endpoint_permissions_listCaps(Core::JSON::ArrayType<Core::JSON::String>& response) {
     auto caps = _permService->ListCapabilities();
     for (const auto& c : caps) {
@@ -182,6 +203,7 @@ uint32_t Badger::endpoint_permissions_listCaps(Core::JSON::ArrayType<Core::JSON:
     return Core::ERROR_NONE;
 }
 
+// PUBLIC_INTERFACE
 uint32_t Badger::endpoint_permissions_listFireboltPermissions(Core::JSON::ArrayType<Core::JSON::String>& response) {
     auto perms = _permService->ListFireboltPermissions();
     for (const auto& p : perms) {

@@ -1,3 +1,4 @@
 #include "Badger/Module.h"
 
-// Intentionally minimal. Some Thunder setups require a TU to anchor module linkage.
+// Minimal translation unit to align with WPEFramework plugin patterns.
+// Some Thunder setups require a TU to anchor module linkage.

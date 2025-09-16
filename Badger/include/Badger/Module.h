@@ -4,7 +4,7 @@
 #define MODULE_NAME Badger
 #endif
 
-// Thunder headers
+// Thunder Core and Plugins headers (paths may vary by distribution)
 #include <core/JSON.h>
 #include <core/core.h>
 #include <plugins/JSONRPC.h>
