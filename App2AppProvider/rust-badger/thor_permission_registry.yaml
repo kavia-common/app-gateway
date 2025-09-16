@@ -1,0 +1,40 @@
+# Example Thor permission registry mapping
+# Each entry maps a Thor permission ID to Firebolt capabilities/roles and APIs.
+# Extend this file with product-specific permission IDs and bindings.
+
+permissions:
+  - id: "DATA_timeZone"
+    display_name: "Time Zone"
+    description: "Access to device time zone"
+    provider: "device"
+    capabilities:
+      use:
+        - "xrn:time:capability:timezone:read"
+      manage: []
+      provide: []
+    apis:
+      - "device.timezone.read"
+
+  - id: "ACCESS_integratedPlayer_create"
+    display_name: "Integrated Player Create"
+    description: "Permission to create integrated player sessions"
+    provider: "integratedPlayer"
+    capabilities:
+      use:
+        - "IntegratedPlayer.create"
+      manage: []
+      provide: []
+    apis:
+      - "integratedPlayer.create"
+
+  - id: "APP_lifecycle_ready"
+    display_name: "Lifecycle Ready"
+    description: "Lifecycle provider readiness"
+    provider: "lifecycle"
+    capabilities:
+      provide:
+        - "Lifecycle.onRequestReady"
+      use: []
+      manage: []
+    apis:
+      - "lifecycle.ready"
