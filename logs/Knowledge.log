@@ -53,3 +53,31 @@
 2025-09-16 09:11:50,427 - Knowledge - INFO - Updating org costs, total cost: 0
 2025-09-16 09:11:51,232 - Knowledge - INFO - Saving knowledge to Redis...
 2025-09-16 09:11:51,331 - Knowledge - INFO - Knowledge saved to Redis successfully
+2025-09-16 09:18:27,617 - Knowledge - INFO - Redis support added with prefix knowledge:b8811zt:
+2025-09-16 09:18:27,846 - Knowledge - INFO - load persisted knowledge: begin
+2025-09-16 09:18:27,971 - Knowledge - INFO - Found code-base-name: https://github.com/kavia-common/app-gateway.git:main
+2025-09-16 09:18:28,054 - Knowledge - INFO - Found code_base: <app.utils.kg_build.knowledge.KnowledgeCodeBase object at 0x7f73947d1c10>
+2025-09-16 09:18:28,178 - Knowledge - INFO - process ingested knowledge for /app/data/tataelxsimcvaripplecode5379/59/b8811zt/app-gateway/README.md
+2025-09-16 09:18:28,308 - Knowledge - INFO - load persisted knowledge: end
+2025-09-16 09:18:28,400 - Knowledge - INFO - load persisted docinfo: begin
+2025-09-16 09:18:28,524 - Knowledge - INFO - load persisted docinfo: end
+2025-09-16 09:18:28,618 - Knowledge - INFO - worker kw1 created with dedicated MongoDB connection (total: 1)
+2025-09-16 09:18:28,768 - Knowledge - INFO - knowledge worker kw1 start
+2025-09-16 09:18:28,869 - Knowledge - INFO - Knowledge creation complete
+2025-09-16 09:18:28,982 - Knowledge - INFO - Updating org costs, total cost: 0
+2025-09-16 09:18:29,786 - Knowledge - INFO - Saving knowledge to Redis...
+2025-09-16 09:18:29,911 - Knowledge - INFO - Knowledge saved to Redis successfully
+2025-09-16 09:19:13,876 - Knowledge - INFO - Redis support added with prefix knowledge:b8811zt:
+2025-09-16 09:19:14,114 - Knowledge - INFO - load persisted knowledge: begin
+2025-09-16 09:19:14,200 - Knowledge - INFO - Found code-base-name: https://github.com/kavia-common/app-gateway.git:main
+2025-09-16 09:19:14,307 - Knowledge - INFO - Found code_base: <app.utils.kg_build.knowledge.KnowledgeCodeBase object at 0x7fa710bd5010>
+2025-09-16 09:19:14,396 - Knowledge - INFO - process ingested knowledge for /app/data/tataelxsimcvaripplecode5379/59/b8811zt/app-gateway/README.md
+2025-09-16 09:19:14,482 - Knowledge - INFO - load persisted knowledge: end
+2025-09-16 09:19:14,564 - Knowledge - INFO - load persisted docinfo: begin
+2025-09-16 09:19:14,647 - Knowledge - INFO - load persisted docinfo: end
+2025-09-16 09:19:14,752 - Knowledge - INFO - worker kw1 created with dedicated MongoDB connection (total: 1)
+2025-09-16 09:19:14,859 - Knowledge - INFO - knowledge worker kw1 start
+2025-09-16 09:19:14,936 - Knowledge - INFO - Knowledge creation complete
+2025-09-16 09:19:15,022 - Knowledge - INFO - Updating org costs, total cost: 0
+2025-09-16 09:19:15,872 - Knowledge - INFO - Saving knowledge to Redis...
+2025-09-16 09:19:15,987 - Knowledge - INFO - Knowledge saved to Redis successfully
