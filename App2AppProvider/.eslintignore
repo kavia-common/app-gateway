@@ -1,0 +1,13 @@
+# Output folders
+dist
+node_modules
+
+# Non-JS/TS sources in this repo
+../Badger
+../App2AppProvider/BadgerThunder
+../App2AppProvider/rust-badger
+../../attachments
+../../assets
+
+# Misc
+*.min.js
