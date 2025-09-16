@@ -2,6 +2,8 @@
 
 namespace {
 
+// Request DTOs ----------------------------------------------------
+
 struct CheckItem : public WPEFramework::Core::JSON::Container {
     WPEFramework::Core::JSON::String capability;
     WPEFramework::Core::JSON::String role;
@@ -27,6 +29,25 @@ struct CheckParams : public WPEFramework::Core::JSON::Container {
         Add(_T("role"), &role);
     }
 };
+
+// Helpers ---------------------------------------------------------
+
+static std::string ToLower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return s;
+}
+
+// Normalize "role" to one of: "use", "manage", "provide" (default "use").
+// Returns empty string if invalid (caller should treat as bad request).
+static std::string NormalizeRole(const std::string& role) {
+    if (role.empty()) return "use";
+    const auto r = ToLower(role);
+    if (r == "use" || r == "manage" || r == "provide") {
+        return r;
+    }
+    return std::string();
+}
 
 } // namespace
 
@@ -64,14 +85,16 @@ Badger::~Badger() {
 const string Badger::Initialize(PluginHost::IShell* service) {
     _service = service;
 
-    // Read configuration JSON
+    // Configure from plugin.json -> configuration {}
     string configLine = service->ConfigLine();
     Core::JSON::Variant js;
+    std::vector<string> cfgGrantedIds;
     if ((Core::JSON::Variant::FromString(configLine, js) == true) && (js.Content() == Core::JSON::Variant::type::OBJECT)) {
         auto& obj = static_cast<Core::JSON::Object&>(js);
         Core::JSON::String path;
         Core::JSON::DecUInt32 ttl;
         Core::JSON::ArrayType<Core::JSON::String> granted;
+        Core::JSON::String logLevel; // optionally parsed (not used in this implementation)
 
         if (obj.Get(_T("registryPath"), path) == true) {
             _registryPath = path.Value();
@@ -80,21 +103,21 @@ const string Badger::Initialize(PluginHost::IShell* service) {
             _cacheTtlSeconds = static_cast<uint32_t>(ttl.Value());
         }
         if (obj.Get(_T("grantedIds"), granted) == true) {
-            std::unordered_set<string> ids;
             for (auto it = granted.Elements(); it.Next();) {
-                ids.insert(it.Current().Value());
-            }
-            if (_permService) {
-                _permService->SetGrantedIds(ids);
-            } else {
-                // Stash after registry load (below)
+                const auto v = it.Current().Value();
+                if (!v.empty()) {
+                    cfgGrantedIds.emplace_back(v);
+                }
             }
         }
+        // Optional logLevel (currently unused)
+        (void)obj.Get(_T("logLevel"), logLevel);
     }
     if (_registryPath.empty()) {
         _registryPath = "/etc/badger/thor_permission_registry.yaml";
     }
 
+    // Load registry
     string err;
     _registry = Registry::LoadFromFile(_registryPath, err);
     if (!_registry) {
@@ -103,14 +126,19 @@ const string Badger::Initialize(PluginHost::IShell* service) {
 
     _permService = std::make_unique<PermissionService>(*_registry, _cacheTtlSeconds);
 
-    // If config carried "grantedIds", set them; otherwise fallback to a non-empty safe sample for dev
-    // In production, wire a proper provider to call _permService->SetGrantedIds with runtime data.
-    std::unordered_set<string> defaultIds = {
-        "DATA_timeZone",
-        "ACCESS_integratedPlayer_create",
-        "APP_lifecycle_ready"
-    };
-    _permService->SetGrantedIds(defaultIds);
+    // Apply configured grantedIds if provided; otherwise use a safe development default.
+    std::unordered_set<string> ids;
+    if (!cfgGrantedIds.empty()) {
+        ids.insert(cfgGrantedIds.begin(), cfgGrantedIds.end());
+    } else {
+        // Development fallback. In production, wire an external provider and set dynamically.
+        ids = {
+            "DATA_timeZone",
+            "ACCESS_integratedPlayer_create",
+            "APP_lifecycle_ready"
+        };
+    }
+    _permService->SetGrantedIds(ids);
 
     return string(); // success
 }
@@ -124,6 +152,8 @@ void Badger::Deinitialize(PluginHost::IShell* /*service*/) {
 string Badger::Information() const {
     return string(_T("Badger: Permission abstraction plugin (Thunder)"));
 }
+
+// ---- JSON-RPC endpoints ------------------------------------------------------
 
 // PUBLIC_INTERFACE
 uint32_t Badger::endpoint_ping(Core::JSON::String& response) {
@@ -155,11 +185,16 @@ uint32_t Badger::endpoint_permissions_check(const Core::JSON::Variant& parameter
         params.FromString(parameters.ToString());
     }
     const string cap = params.capability.Value();
-    const string role = params.role.IsSet() ? params.role.Value() : "use";
     if (cap.empty()) {
+        // Missing or invalid capability
         return Core::ERROR_BAD_REQUEST;
     }
-    const bool allowed = _permService->CheckCapability(cap, role);
+    const auto normalizedRole = NormalizeRole(params.role.IsSet() ? params.role.Value() : "use");
+    if (normalizedRole.empty()) {
+        // Role provided but not one of allowed values
+        return Core::ERROR_BAD_REQUEST;
+    }
+    const bool allowed = _permService->CheckCapability(cap, normalizedRole);
     response = allowed;
     return Core::ERROR_NONE;
 }
@@ -173,11 +208,16 @@ uint32_t Badger::endpoint_permissions_checkAll(const Core::JSON::Variant& parame
     std::vector<std::pair<string,string>> items;
     for (auto it = params.items.Elements(); it.Next();) {
         auto& ci = it.Current();
-        if (ci.capability.Value().empty()) {
+        const auto cap = ci.capability.Value();
+        if (cap.empty()) {
             continue;
         }
-        const string role = ci.role.IsSet() ? ci.role.Value() : "use";
-        items.emplace_back(ci.capability.Value(), role);
+        const auto normRole = NormalizeRole(ci.role.IsSet() ? ci.role.Value() : "use");
+        if (normRole.empty()) {
+            // Skip invalid roles instead of failing the whole request.
+            continue;
+        }
+        items.emplace_back(cap, normRole);
     }
     auto results = _permService->CheckAll(items);
     for (const auto& t : results) {

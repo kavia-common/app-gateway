@@ -1,4 +1,12 @@
 #include "Badger/Module.h"
+#include "Badger/BadgerPlugin.h"
 
-// Minimal translation unit to align with WPEFramework plugin patterns.
-// Some Thunder setups require a TU to anchor module linkage.
+namespace WPEFramework {
+namespace Plugin {
+
+// Register the Badger plugin with Thunder (WPEFramework).
+// The major/minor version will be visible to the plugin manager.
+SERVICE_REGISTRATION(Badger, 1, 0);
+
+} // namespace Plugin
+} // namespace WPEFramework
