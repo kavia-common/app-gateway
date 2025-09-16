@@ -1,0 +1,12 @@
+{
+  "callsign": "Badger",
+  "classname": "WPEFramework::Plugin::Badger",
+  "locator": "libWPEFrameworkBadger.so",
+  "autostart": false,
+  "version": "1.0.0",
+  "configuration": {
+    "registryPath": "/etc/badger/thor_permission_registry.yaml",
+    "cacheTtlSeconds": 3600,
+    "logLevel": "INFO"
+  }
+}
