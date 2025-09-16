@@ -1,0 +1,12 @@
+{
+  "callsign": "BadgerThunder",
+  "classname": "WPEFramework::Plugin::BadgerThunderPlugin",
+  "locator": "libWPEFrameworkBadgerThunder.so",
+  "autostart": false,
+  "version": "1.0.0",
+  "precondition": [],
+  "configuration": {
+    "registryPath": "/etc/badger/thor_permission_registry.yaml",
+    "logLevel": "INFO"
+  }
+}
