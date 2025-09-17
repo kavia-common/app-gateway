@@ -1,7 +1,6 @@
 #include "App2AppProvider.h"
 
 #include <core/Enumerate.h>
-#include <core/JSONRPC.h>
 #include <core/Trace.h>
 
 namespace WPEFramework {

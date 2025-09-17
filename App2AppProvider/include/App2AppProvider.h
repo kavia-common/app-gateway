@@ -22,7 +22,7 @@ namespace Plugin {
  * - invoke provider for a consumer (create correlationId and track consumer context)
  * - accept provider responses/errors and route them back via AppGateway.respond
  *
- * Methods:
+ * JSON-RPC Methods:
  *  - org.rdk.ApptoAppProvider.registerProvider
  *  - org.rdk.ApptoAppProvider.invokeProvider
  *  - org.rdk.ApptoAppProvider.handleProviderResponse
@@ -37,13 +37,24 @@ public:
     ~App2AppProvider() override;
 
     // IPlugin lifecycle
+
     // PUBLIC_INTERFACE
+    /**
+     * Initialize plugin, prepare AppGateway client, register JSON-RPC.
+     * Returns empty string on success, or non-empty error string.
+     */
     const string Initialize(PluginHost::IShell* service) override;
 
     // PUBLIC_INTERFACE
+    /**
+     * Cleanup all state and release service reference.
+     */
     void Deinitialize(PluginHost::IShell* service) override;
 
     // PUBLIC_INTERFACE
+    /**
+     * Return plugin information string.
+     */
     string Information() const override;
 
     // Connection lifecycle hooks
@@ -51,7 +62,7 @@ public:
     void Detach(PluginHost::Channel& channel) override;
 
 private:
-    // JSON-RPC method handlers
+    // JSON-RPC method handlers (return Core::ERROR_* codes)
     uint32_t registerProvider(const Core::JSON::VariantContainer& params, Core::JSON::VariantContainer& response);
     uint32_t invokeProvider(const Core::JSON::VariantContainer& params, Core::JSON::VariantContainer& response);
     uint32_t handleProviderResponse(const Core::JSON::VariantContainer& params, Core::JSON::VariantContainer& response);
