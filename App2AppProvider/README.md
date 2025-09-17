@@ -1,23 +1,27 @@
-# App2AppProvider Plugin
+# App2AppProvider (Thunder Plugin)
 
-This directory contains the App2AppProvider plugin implementation scaffolding per the following specifications:
-- app2appprovider-technical-design.md
-- appgateway-technical-design.md
-- thunder-plugins-architecture.md
+Implements the App2AppProvider JSON-RPC interface per the design docs:
 
-Key responsibilities:
-- Register/unregister provider capabilities for apps.
-- Accept consumer invocations for a capability; create correlation and track consumer context.
-- Accept provider responses/errors and route them back to the original consumer using AppGateway.respond.
+Methods:
+- org.rdk.ApptoAppProvider.registerProvider
+- org.rdk.ApptoAppProvider.invokeProvider
+- org.rdk.ApptoAppProvider.handleProviderResponse
+- org.rdk.ApptoAppProvider.handleProviderError
 
-Structure:
-- src/
-  - index.ts: Plugin entry point exposing the JSON-RPC methods.
-  - providerRegistry.ts: Capability → provider registration management.
-  - correlationStore.ts: CorrelationId → consumer context store.
-  - appGatewayClient.ts: Client wrapper to call org.rdk.AppGateway.respond.
-  - types.ts: Shared DTOs and types.
+Responsibilities:
+- Manage provider capability registrations (capability -> provider appId/connectionId).
+- Correlate consumer requests (create correlationId) and store their request context.
+- Accept provider responses/errors and forward them back to the originating consumer
+  via org.rdk.AppGateway.respond using the preserved context.
 
-Notes:
-- This implementation is framework-agnostic scaffolding (TypeScript), mirroring Thunder plugin interfaces and responsibilities, meant to be adapted to a real Thunder/WPEFramework C++ plugin or bound into your existing runtime.
-- Error codes and method names adhere to the design docs. Validation is explicit and defensive.
+This code follows Thunder conventions:
+- Inherits IPlugin and JSONRPC, registers methods in the constructor.
+- Thread-safe registries with minimal lock scopes.
+- Inter-plugin calls use IDispatcher to call AppGateway.respond.
+
+Integration notes:
+- Place this folder in your Thunder plugins tree and add to the build.
+- Ensure WPEFramework (Thunder) development libraries are available.
+- Callsign is typically `App2AppProvider`; method namespace is
+  `org.rdk.ApptoAppProvider.<method>` per the interface documents.
+
