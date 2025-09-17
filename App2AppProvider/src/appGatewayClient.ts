@@ -1,14 +1,16 @@
 import { ConsumerContext } from './types';
 
 /**
- * AppGatewayClient wraps calling org.rdk.AppGateway.respond.
- * This scaffold exposes a synchronous interface; adapt to your runtime JSON-RPC client.
+ * AppGatewayClient encapsulates calling org.rdk.AppGateway.respond through an injected RPC function.
+ * The actual transport (e.g., Thunder dispatcher, WS JSON-RPC client) must be supplied by the host.
  */
 export class AppGatewayClient {
   constructor(private readonly invokeRpc: (method: string, params: unknown) => Promise<unknown>) {}
 
   /**
-   * Call AppGateway.respond with the provided consumer context and payload.
+   * PUBLIC_INTERFACE
+   * Respond back to the original consumer via AppGateway using the stored context.
+   * The payload must include either a { result: ... } or { error: { code, message } }.
    */
   async respond(consumerCtx: ConsumerContext, payload: unknown): Promise<void> {
     const params = {

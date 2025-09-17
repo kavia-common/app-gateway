@@ -1,22 +1,24 @@
+/**
+ * CorrelationStore maintains correlationId -> consumer context mapping.
+ * The new design is minimal and independent.
+ */
+
 import { ConsumerContext } from './types';
 
-/**
- * CorrelationStore tracks pending consumer requests awaiting provider responses.
- */
 export class CorrelationStore {
-  private byCorrelationId: Map<string, ConsumerContext> = new Map();
+  private readonly byCorrelationId = new Map<string, ConsumerContext>();
 
   /**
-   * Create a correlationId for a consumer request and persist its context.
+   * Create a correlation id and store context.
    */
-  create(ctx: ConsumerContext): string {
-    const correlationId = cryptoRandomId();
-    this.byCorrelationId.set(correlationId, ctx);
-    return correlationId;
+  create(context: ConsumerContext): string {
+    const id = randomCorrelationId();
+    this.byCorrelationId.set(id, context);
+    return id;
   }
 
   /**
-   * Find and remove by correlationId (one-shot).
+   * Retrieve and remove the stored context (one-shot).
    */
   findAndErase(correlationId: string): ConsumerContext | undefined {
     const ctx = this.byCorrelationId.get(correlationId);
@@ -27,20 +29,19 @@ export class CorrelationStore {
   }
 
   /**
-   * Cleanup entries by connection (e.g., on Detach).
+   * Cleanup entries by connection id for closed/detached connections.
    */
   cleanupByConnection(connectionId: string): void {
-    for (const [id, ctx] of this.byCorrelationId.entries()) {
+    for (const [cid, ctx] of this.byCorrelationId.entries()) {
       if (ctx.connectionId === connectionId) {
-        this.byCorrelationId.delete(id);
+        this.byCorrelationId.delete(cid);
       }
     }
   }
 }
 
-function cryptoRandomId(): string {
-  // Lightweight random id suitable for correlation (not cryptographically strong but sufficient for correlation).
-  // Replace with crypto.randomUUID() if available in runtime.
-  const rnd = () => Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
-  return `${rnd()}-${rnd()}`;
+function randomCorrelationId(): string {
+  // Light-weight random id (not cryptographically secure).
+  const part = () => Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
+  return `${part()}-${part()}`;
 }

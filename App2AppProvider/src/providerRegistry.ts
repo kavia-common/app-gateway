@@ -1,14 +1,16 @@
+/**
+ * ProviderRegistry maintains a capability -> provider mapping.
+ * This fresh implementation is intentionally minimal and self-contained.
+ */
+
 import { ProviderEntry } from './types';
 
-/**
- * ProviderRegistry manages capability → provider mapping and cleans up by connection.
- */
 export class ProviderRegistry {
-  private capabilityToProvider: Map<string, ProviderEntry> = new Map();
-  private capabilitiesByConnection: Map<string, Set<string>> = new Map();
+  private readonly capabilityToProvider = new Map<string, ProviderEntry>();
+  private readonly capabilitiesByConnection = new Map<string, Set<string>>();
 
   /**
-   * Registers (or replaces) the provider for a capability.
+   * Register or replace the provider for a given capability.
    */
   register(capability: string, appId: string, connectionId: string): void {
     const entry: ProviderEntry = {
@@ -24,7 +26,7 @@ export class ProviderRegistry {
   }
 
   /**
-   * Unregisters the provider for a capability if owned by the same connection.
+   * Unregister capability if owned by the same connection.
    */
   unregister(capability: string, connectionId: string): void {
     const entry = this.capabilityToProvider.get(capability);
@@ -42,22 +44,24 @@ export class ProviderRegistry {
   }
 
   /**
-   * Lookup provider by capability.
+   * Lookup an active provider entry for a capability.
    */
   find(capability: string): ProviderEntry | undefined {
     return this.capabilityToProvider.get(capability);
   }
 
   /**
-   * Cleanup all capabilities registered by a connection (e.g., on Detach).
+   * Cleanup all capabilities registered by a given connection id.
+   * Invoked when a connection is closed/detached.
    */
   cleanupByConnection(connectionId: string): void {
     const set = this.capabilitiesByConnection.get(connectionId);
     if (!set) return;
-    for (const capability of set) {
-      const entry = this.capabilityToProvider.get(capability);
+
+    for (const cap of set) {
+      const entry = this.capabilityToProvider.get(cap);
       if (entry && entry.connectionId === connectionId) {
-        this.capabilityToProvider.delete(capability);
+        this.capabilityToProvider.delete(cap);
       }
     }
     this.capabilitiesByConnection.delete(connectionId);
