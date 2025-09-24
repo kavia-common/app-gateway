@@ -24,7 +24,7 @@ import {
  * The host environment must supply this. Typically, this bridges to the underlying transport
  * (Thunder/WS JSON-RPC), using the given connectionId as routing info.
  */
-export type SendToConnection = (connectionId: string, method: string, params: unknown) => Promise<unknown>;
+export type SendToConnection = (connectionId: number, method: string, params: unknown) => Promise<unknown>;
 
 /**
  * Options to customize the behaviour and integration points of the App2AppProvider.
@@ -32,7 +32,7 @@ export type SendToConnection = (connectionId: string, method: string, params: un
 export interface App2AppProviderOptions {
   /**
    * JSON-RPC method invoked on the provider connection when a consumer performs an invoke.
-   * The payload is: { correlationId, capability, context: { appId, connectionId, requestId }, payload? }
+   * The payload is: { correlationId, capability, context: { appId, connectionId (uint32), requestId }, payload? }
    * Default: 'org.rdk.App2AppProvider.request'
    */
   providerInvokeMethod: string;
@@ -83,6 +83,18 @@ function isFiniteNumber(value: unknown): value is number {
 }
 
 /**
+ * Validate that a value is an unsigned 32-bit integer (uint32_t domain).
+ */
+function isUint32Number(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= 0xFFFFFFFF
+  );
+}
+
+/**
  * Basic structural validation for RegisterProviderParams.
  */
 function validateRegisterParams(params: RegisterProviderParams): string | undefined {
@@ -90,7 +102,7 @@ function validateRegisterParams(params: RegisterProviderParams): string | undefi
   const { context, register, capability } = params;
   if (!context || typeof context !== 'object') return 'context is required.';
   if (!isFiniteNumber(context.requestId)) return 'context.requestId must be a number.';
-  if (!isNonEmptyString(context.connectionId)) return 'context.connectionId must be a non-empty string.';
+  if (!isUint32Number(context.connectionId)) return 'context.connectionId must be a uint32 number.';
   if (!isNonEmptyString(context.appId)) return 'context.appId must be a non-empty string.';
   if (typeof register !== 'boolean') return 'register must be boolean.';
   if (!isNonEmptyString(capability)) return 'capability must be a non-empty string.';
@@ -105,7 +117,7 @@ function validateInvokeParams(params: InvokeProviderParams): string | undefined 
   const { context, capability } = params;
   if (!context || typeof context !== 'object') return 'context is required.';
   if (!isFiniteNumber(context.requestId)) return 'context.requestId must be a number.';
-  if (!isNonEmptyString(context.connectionId)) return 'context.connectionId must be a non-empty string.';
+  if (!isUint32Number(context.connectionId)) return 'context.connectionId must be a uint32 number.';
   if (!isNonEmptyString(context.appId)) return 'context.appId must be a non-empty string.';
   if (!isNonEmptyString(capability)) return 'capability must be a non-empty string.';
   return undefined;
@@ -171,7 +183,7 @@ export class App2AppProvider {
   /**
    * Create an App2AppProvider instance.
    *
-   * @param sendToConnection function that routes a JSON-RPC call to a specific connectionId.
+   * @param sendToConnection function that routes a JSON-RPC call to a specific connectionId (uint32).
    * @param gatewayRpc function used by AppGatewayClient to call org.rdk.AppGateway.respond.
    * @param options optional behavior overrides and custom stores.
    */
@@ -349,8 +361,8 @@ export class App2AppProvider {
    * Notify the provider subsystem that a connection has closed/disconnected.
    * This cleans up any registered capabilities and orphaned correlations associated with the connection.
    */
-  onConnectionClosed(connectionId: string): void {
-    if (!isNonEmptyString(connectionId)) return;
+  onConnectionClosed(connectionId: number): void {
+    if (!isUint32Number(connectionId)) return;
     this.registry.cleanupByConnection(connectionId);
     this.correlations.cleanupByConnection(connectionId);
     this.log('Cleaned up state for closed connection', { connectionId });

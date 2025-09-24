@@ -7,12 +7,12 @@ import { ProviderEntry } from './types';
 
 export class ProviderRegistry {
   private readonly capabilityToProvider = new Map<string, ProviderEntry>();
-  private readonly capabilitiesByConnection = new Map<string, Set<string>>();
+  private readonly capabilitiesByConnection = new Map<number, Set<string>>();
 
   /**
    * Register or replace the provider for a given capability.
    */
-  register(capability: string, appId: string, connectionId: string): void {
+  register(capability: string, appId: string, connectionId: number): void {
     const entry: ProviderEntry = {
       appId,
       connectionId,
@@ -28,7 +28,7 @@ export class ProviderRegistry {
   /**
    * Unregister capability if owned by the same connection.
    */
-  unregister(capability: string, connectionId: string): void {
+  unregister(capability: string, connectionId: number): void {
     const entry = this.capabilityToProvider.get(capability);
     if (!entry) return;
     if (entry.connectionId !== connectionId) return;
@@ -54,7 +54,7 @@ export class ProviderRegistry {
    * Cleanup all capabilities registered by a given connection id.
    * Invoked when a connection is closed/detached.
    */
-  cleanupByConnection(connectionId: string): void {
+  cleanupByConnection(connectionId: number): void {
     const set = this.capabilitiesByConnection.get(connectionId);
     if (!set) return;
 

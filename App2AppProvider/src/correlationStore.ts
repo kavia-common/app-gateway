@@ -31,7 +31,7 @@ export class CorrelationStore {
   /**
    * Cleanup entries by connection id for closed/detached connections.
    */
-  cleanupByConnection(connectionId: string): void {
+  cleanupByConnection(connectionId: number): void {
     for (const [cid, ctx] of this.byCorrelationId.entries()) {
       if (ctx.connectionId === connectionId) {
         this.byCorrelationId.delete(cid);

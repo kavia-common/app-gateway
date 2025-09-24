@@ -1,4 +1,5 @@
 //
+//
 // Fresh, minimal types for the App2AppProvider plugin
 //
 
@@ -11,8 +12,8 @@
 export interface RequestContext {
   /** Incoming request id from the consumer/provider request. */
   requestId: number;
-  /** Unique connection identifier (e.g., ChannelId or GUID string). */
-  connectionId: string;
+  /** Unique connection identifier (uint32_t numeric id). */
+  connectionId: number;
   /** Authenticated application id. */
   appId: string;
 }
@@ -79,7 +80,8 @@ export interface HandleProviderErrorParams {
  */
 export interface ConsumerContext {
   requestId: number;
-  connectionId: string;
+  /** Connection identifier (uint32_t). */
+  connectionId: number;
   appId: string;
   capability: string;
   createdAt: number;
@@ -90,7 +92,8 @@ export interface ConsumerContext {
  */
 export interface ProviderEntry {
   appId: string;
-  connectionId: string;
+  /** Connection identifier (uint32_t). */
+  connectionId: number;
   registeredAt: number;
 }
 

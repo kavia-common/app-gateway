@@ -16,7 +16,7 @@ export class AppGatewayClient {
     const params = {
       context: {
         requestId: consumerCtx.requestId,
-        connectionId: consumerCtx.connectionId,
+        connectionId: consumerCtx.connectionId, // uint32
         appId: consumerCtx.appId
       },
       payload
