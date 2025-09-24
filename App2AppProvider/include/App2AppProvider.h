@@ -3,7 +3,7 @@
 #include <core/JSON.h>
 #include <plugins/JSONRPC.h>
 #include <plugins/IDispatcher.h>
-#include <plugins/Plugin.h>
+#include <plugins/IPlugin.h>
 #include <mutex>
 #include <memory>
 #include <string>
@@ -28,12 +28,17 @@ namespace Plugin {
  *  - org.rdk.ApptoAppProvider.handleProviderResponse
  *  - org.rdk.ApptoAppProvider.handleProviderError
  */
-class App2AppProvider : public PluginHost::IPlugin, public PluginHost::JSONRPC {
+class App2AppProvider : public PluginHost::IPlugin, public PluginHost::IPluginExtended, public PluginHost::JSONRPC {
 public:
     App2AppProvider(const App2AppProvider&) = delete;
     App2AppProvider& operator=(const App2AppProvider&) = delete;
 
+    // PUBLIC_INTERFACE
+    /**
+     * Construct and register JSON-RPC methods.
+     */
     App2AppProvider();
+
     ~App2AppProvider() override;
 
     // IPlugin lifecycle
@@ -57,8 +62,16 @@ public:
      */
     string Information() const override;
 
-    // Connection lifecycle hooks
-    void Attach(PluginHost::Channel& channel) override;
+    // PUBLIC_INTERFACE
+    /**
+     * Per-connection attach hook. Return true to accept.
+     */
+    bool Attach(PluginHost::Channel& channel) override;
+
+    // PUBLIC_INTERFACE
+    /**
+     * Per-connection detach hook. Cleanup all state belonging to this channel.
+     */
     void Detach(PluginHost::Channel& channel) override;
 
 private:

@@ -53,6 +53,7 @@ uint32_t AppGatewayClient::Respond(const CorrelationStore::ConsumerContext& ctx,
 
     string paramsStr = ToJSONString(paramsObj);
     string result; // body ignored; we check return code
-    return dispatcher->Invoke(0 /*channelId*/, 0 /*id*/, Core::SystemInfo::Instance().ProcessId(),
-                              _T("org.rdk.AppGateway.respond"), paramsStr, result);
+    // Call AppGateway method on its dispatcher: method name should be local ("respond"), empty token
+    return dispatcher->Invoke(0 /*channelId*/, 0 /*id*/, string() /*token*/,
+                              _T("respond"), paramsStr, result);
 }

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <plugins/IDispatcher.h>
-#include <plugins/Plugin.h>
+#include <plugins/IPlugin.h>
 #include <core/JSON.h>
 #include <string>
 #include "CorrelationStore.h"

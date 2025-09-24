@@ -2,6 +2,7 @@
 
 #include <core/Enumerate.h>
 #include <core/Trace.h>
+#include <plugins/MetaData.h>
 
 namespace WPEFramework {
 namespace Plugin {
@@ -16,16 +17,19 @@ inline uint32_t ToRpcErrorInvalidParams() { return static_cast<uint32_t>(Core::E
 inline uint32_t ToRpcErrorInvalidRequest() { return static_cast<uint32_t>(Core::ERROR_INCORRECT_URL); }
 } // namespace
 
+// Register plugin metadata (version 1.0.0, no specific subsystem constraints)
+static Metadata<App2AppProvider> _metadata(1, 0, 0, { }, { }, { });
+
 // --------------------- App2AppProvider ---------------------
 
 App2AppProvider::App2AppProvider()
     : PluginHost::JSONRPC()
     , _service(nullptr) {
-    // Register JSON-RPC methods
-    Register<int, void>(kMethodRegisterProvider, &App2AppProvider::registerProvider, this);
-    Register<int, void>(kMethodInvokeProvider, &App2AppProvider::invokeProvider, this);
-    Register<int, void>(kMethodHandleProviderResponse, &App2AppProvider::handleProviderResponse, this);
-    Register<int, void>(kMethodHandleProviderError, &App2AppProvider::handleProviderError, this);
+    // Register JSON-RPC methods using default VariantContainer in/out
+    Register(kMethodRegisterProvider, &App2AppProvider::registerProvider, this);
+    Register(kMethodInvokeProvider, &App2AppProvider::invokeProvider, this);
+    Register(kMethodHandleProviderResponse, &App2AppProvider::handleProviderResponse, this);
+    Register(kMethodHandleProviderError, &App2AppProvider::handleProviderError, this);
 }
 
 App2AppProvider::~App2AppProvider() {
@@ -42,7 +46,7 @@ const string App2AppProvider::Initialize(PluginHost::IShell* service) {
     return string(); // empty string indicates success in Thunder
 }
 
-void App2AppProvider::Deinitialize(PluginHost::IShell* service) {
+void App2AppProvider::Deinitialize(PluginHost::IShell* /*service*/) {
     std::lock_guard<std::mutex> guard(_adminLock);
     _appGateway.reset();
     _correlations = CorrelationStore();
@@ -54,9 +58,11 @@ string App2AppProvider::Information() const {
     return string("App2AppProvider: manages provider capabilities, invocation correlation, and response routing.");
 }
 
-void App2AppProvider::Attach(PluginHost::Channel& /*channel*/) {
+bool App2AppProvider::Attach(PluginHost::Channel& /*channel*/) {
     // Nothing to do on open
+    return true;
 }
+
 void App2AppProvider::Detach(PluginHost::Channel& channel) {
     // Cleanup provider registrations and pending correlations for the closed connection
     const uint32_t id = channel.Id();
@@ -85,16 +91,18 @@ bool App2AppProvider::ExtractContext(const Core::JSON::VariantContainer& in,
         return false;
     }
 
-    bool ok = true;
-    requestId = static_cast<uint32_t>(context["requestId"].Number(ok));
-    if (!ok) return false;
+    // requestId
+    requestId = static_cast<uint32_t>(context["requestId"].Number());
 
     // Accept both numeric or string convertible to uint32
-    if (context["connectionId"].IsNumber() == true) {
-        connectionId = static_cast<uint32_t>(context["connectionId"].Number(ok));
-        if (!ok) return false;
+    const Core::JSON::Variant& connVar = context["connectionId"];
+    if (connVar.Content() == Core::JSON::Variant::type::NUMBER) {
+        connectionId = static_cast<uint32_t>(connVar.Number());
     } else {
-        string connStr = context["connectionId"].String();
+        const string connStr = connVar.String();
+        if (connStr.empty()) {
+            return false;
+        }
         try {
             connectionId = static_cast<uint32_t>(std::stoul(connStr));
         } catch (...) {
@@ -131,7 +139,6 @@ bool App2AppProvider::ExtractPayloadCorrelation(const Core::JSON::VariantContain
     // Serialize payload object as JSON string
     {
         string serialized;
-        Core::JSON::Parser parser;
         payload.ToString(serialized);
         payloadJson = serialized;
     }
@@ -147,13 +154,12 @@ bool App2AppProvider::ExtractPayloadCorrelation(const Core::JSON::VariantContain
 }
 
 uint32_t App2AppProvider::JsonRpcErrorInvalidParams() {
-    // Map to -32602 as per design. In Thunder, we return Core::ERROR_BAD_REQUEST then
-    // JSONRPC will serialize appropriately.
+    // For INVALID_PARAMS, use a Thunder error representative
     return ToRpcErrorInvalidParams();
 }
 
 uint32_t App2AppProvider::JsonRpcErrorInvalidRequest() {
-    // Map to -32699 as per design. Using a generic incorrect URL/error for handler signal.
+    // For INVALID_REQUEST, use a Thunder error representative
     return ToRpcErrorInvalidRequest();
 }
 
