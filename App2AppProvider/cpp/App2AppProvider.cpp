@@ -5,8 +5,6 @@
 namespace WPEFramework {
 namespace Plugin {
 
-using namespace WPEFramework;
-
 static inline uint64_t NowMs() {
     return static_cast<uint64_t>(Core::Time::Now().Ticks() / Core::Time::TicksPerMillisecond);
 }
