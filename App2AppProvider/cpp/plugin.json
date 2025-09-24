@@ -1,10 +1,11 @@
 {
   "info": {
     "title": "App2AppProvider",
-    "class": "App2AppProvider",
-    "version": "1.0.0",
     "callsign": "App2AppProvider",
-    "preconditions": [],
+    "class": "App2AppProvider",
+    "classname": "WPEFramework::Plugin::App2AppProvider",
+    "locator": "libApp2AppProvider.so",
+    "version": "1.0.0",
     "autostart": false
   },
   "interface": {
