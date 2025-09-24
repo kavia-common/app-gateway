@@ -1,0 +1,15 @@
+{
+  "info": {
+    "title": "App2AppProvider",
+    "class": "App2AppProvider",
+    "version": "1.0.0",
+    "callsign": "App2AppProvider",
+    "preconditions": [],
+    "autostart": false
+  },
+  "interface": {
+    "name": "WPEFramework::Exchange::IApp2AppProvider",
+    "id": 20256
+  },
+  "description": "App2AppProvider Thunder COM plugin implementing provider registration, capability invocation, and gateway response routing."
+}
