@@ -10,6 +10,8 @@ This document describes the App2AppProvider architecture using COM RPC for:
 
 All inter-component calls are strongly-typed COM method calls. Payloads are opaque and may be carried as byte buffers or UTF-8 strings; encoding is an implementation detail of the endpoints (e.g., JSON, CBOR, Protobuf), not a transport concern.
 
+Important type note: connectionId is a numeric identifier (uint32_t) throughout the system (not a string or GUID).
+
 ## Goals
 
 - Strongly-typed transport with COM RPC across process boundaries.
@@ -40,6 +42,7 @@ All inter-component calls are strongly-typed COM method calls. Payloads are opaq
 The following interfaces are defined as C++ COM (pure-virtual) contracts in the `WPEFramework::Exchange` namespace. Methods return `uint32_t` using WPEFramework `Core::ERROR_*` codes. Out parameters are explicitly annotated.
 
 Note: These are conceptual definitions. Exact signatures/namespaces can be aligned with your project’s interface header conventions.
+Type update: `connectionId` is a numeric identifier of type `uint32_t` in all structures, signatures, and flows.
 
 ```cpp
 namespace WPEFramework {
@@ -48,7 +51,7 @@ namespace Exchange {
 // Request-scoped identity allowing the gateway to route the reply.
 struct RequestContext {
     uint32_t         requestId;     // Incoming request ID from the consumer
-    string           connectionId;  // Unique connection identifier (e.g., ChannelId/GUID)
+    uint32_t         connectionId;  // Numeric connection identifier (uint32_t, e.g., COM ChannelId)
     string           appId;         // Authenticated app identity
 };
 
@@ -133,7 +136,7 @@ struct IApp2AppProvider : virtual public Core::IUnknown {
                                                 string& correlationId /* out */) = 0;
 
     // Informational: clean up state on connection teardown.
-    virtual void OnConnectionClosed(const string& connectionId) = 0;
+    virtual void OnConnectionClosed(uint32_t connectionId) = 0;
 };
 
 } // namespace Exchange
@@ -159,7 +162,7 @@ Exact values depend on the WPEFramework version; align with your project’s sha
 2. Provider calls:
    - `IApp2AppProvider::Register(capability, this /* IAppProvider* */, context, registered[out])`
 3. App2AppProvider stores:
-   - capability → ProviderEntry { provider(IAppProvider*), appId, connectionId, registeredAt }
+   - capability → ProviderEntry { provider(IAppProvider*), appId, connectionId (uint32_t), registeredAt }
 4. Return `Core::ERROR_NONE` with `registered = true` if successful.
 
 Unregistration mirrors the above using `Unregister`.
@@ -208,7 +211,7 @@ AppGateway uses the `RequestContext` to route the reply back to the original con
 ### 6) Connection teardown
 
 When a connection closes (provider or consumer):
-- The hosting platform calls `IApp2AppProvider::OnConnectionClosed(connectionId)`.
+- The hosting platform calls `IApp2AppProvider::OnConnectionClosed(uint32_t connectionId)`.
 - App2AppProvider:
   - Removes any provider registrations bound to the connection.
   - Deletes any outstanding correlations for that connection to prevent leaks.
@@ -241,7 +244,7 @@ When a connection closes (provider or consumer):
   - Register(capability, IAppProvider* provider, RequestContext ctx, bool& registered)
   - Unregister(capability, IAppProvider* provider, RequestContext ctx, bool& registered)
   - Invoke(RequestContext ctx, capability, InvocationPayload payload, string& correlationId)
-  - OnConnectionClosed(connectionId)
+  - OnConnectionClosed(uint32_t connectionId)
 
 - IAppProvider
   - OnRequest(InvocationRequest request, IAppProviderResponse* sink)
@@ -262,7 +265,7 @@ When a connection closes (provider or consumer):
 
 ## Security Considerations
 
-- `RequestContext.appId` and `RequestContext.connectionId` must originate from authenticated/authorized sources.
+- `RequestContext.appId` and `RequestContext.connectionId (uint32_t)` must originate from authenticated/authorized sources.
 - Capability names should be validated against policy to ensure only authorized apps can register/handle them.
 - Avoid leaking `correlationId` outside intended boundaries. Treat it as a transient identifier.
 - Validate payload sizes and enforce limits to prevent resource exhaustion.
