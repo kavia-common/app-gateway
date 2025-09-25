@@ -1,7 +1,8 @@
 #include "App2AppProviderImplementation.h"
 
 #include <core/JSON.h>
-#include <random>
+#include <core/Portability.h>
+
 #include <sstream>
 
 namespace WPEFramework {
@@ -10,13 +11,14 @@ namespace Plugin {
 // ----- Lifecycle -----
 App2AppProviderImplementation::App2AppProviderImplementation(PluginHost::IShell* service)
     : _refCount(1)
-    , _service(service) {
+    , _service(service)
+    , _gateway(nullptr) {
 
     LOGTRACE("App2AppProviderImplementation constructed");
 
     if (_service != nullptr) {
         // Acquire AppGateway COMRPC by callsign "AppGateway"
-        _gateway = _service->QueryInterfaceByCallsign<Exchange::IAppGateway>("AppGateway");
+        _gateway = _service->QueryInterfaceByCallsign<Exchange::IAppGateway>(_T("AppGateway"));
         if (_gateway == nullptr) {
             LOGERR("Failed to acquire Exchange::IAppGateway via callsign 'AppGateway'");
         } else {
@@ -70,7 +72,7 @@ bool App2AppProviderImplementation::ParseConnectionId(const std::string& in, uin
         size_t idx = 0;
         unsigned long val = std::stoul(in, &idx, 10);
         if (idx != in.size()) {
-            return false; // trailing chars
+            return false; // trailing or invalid characters
         }
         out = static_cast<uint32_t>(val);
         return true;
@@ -79,29 +81,57 @@ bool App2AppProviderImplementation::ParseConnectionId(const std::string& in, uin
     }
 }
 
-std::string App2AppProviderImplementation::GenerateCorrelationId() const {
-    // Simple UUID-like generator (without external deps)
-    static thread_local std::mt19937_64 rng{std::random_device{}()};
-    std::uniform_int_distribution<uint64_t> dist;
-    auto one = dist(rng);
-    auto two = dist(rng);
-
-    std::ostringstream oss;
-    oss << std::hex << one << "-" << two;
-    return oss.str();
-}
-
-bool App2AppProviderImplementation::ExtractCorrelationIdFromPayload(const std::string& payload, std::string& outCorrelationId) {
-    // Payload is opaque JSON string with correlationId field per design.
+bool App2AppProviderImplementation::ExtractConnectionIdFromPayload(const std::string& payload, uint32_t& outConnectionId) const {
     Core::JSON::VariantContainer obj;
     if (!obj.FromString(payload)) {
+        LOGERR("ExtractConnectionIdFromPayload: failed to parse payload JSON");
         return false;
     }
-    if (!obj.HasLabel("correlationId")) {
+
+    auto tryExtractFromContainer = [&](Core::JSON::VariantContainer& container) -> bool {
+        if (container.HasLabel("connectionId")) {
+            const Core::JSON::Variant& v = container["connectionId"];
+            if (v.IsString() || v.IsNumber()) {
+                std::string s = v.String();
+                uint32_t id = 0;
+                if (ParseConnectionId(s, id)) {
+                    outConnectionId = id;
+                    return true;
+                }
+            }
+        }
         return false;
+    };
+
+    // 1) Try top-level "connectionId"
+    if (tryExtractFromContainer(obj)) {
+        return true;
     }
-    outCorrelationId = obj["correlationId"].String();
-    return !outCorrelationId.empty();
+
+    // 2) Try "contextEcho.connectionId"
+    if (obj.HasLabel("contextEcho")) {
+        const Core::JSON::Variant& echoVar = obj["contextEcho"];
+        if (echoVar.IsObject()) {
+            Core::JSON::VariantContainer echoObj = echoVar.Object();
+            if (tryExtractFromContainer(echoObj)) {
+                return true;
+            }
+        }
+    }
+
+    // 3) Try "context.connectionId"
+    if (obj.HasLabel("context")) {
+        const Core::JSON::Variant& ctxVar = obj["context"];
+        if (ctxVar.IsObject()) {
+            Core::JSON::VariantContainer ctxObj = ctxVar.Object();
+            if (tryExtractFromContainer(ctxObj)) {
+                return true;
+            }
+        }
+    }
+
+    LOGERR("ExtractConnectionIdFromPayload: could not find a parsable connectionId in payload");
+    return false;
 }
 
 // ----- Public API (Exchange::IApp2AppProvider) -----
@@ -165,7 +195,7 @@ Core::hresult App2AppProviderImplementation::RegisterProvider(const Context& con
                 return Core::ERROR_GENERAL;
             }
 
-            // remove capability
+            // remove capability mapping
             _capabilityToProvider.erase(it);
             auto itSet = _capabilitiesByConnection.find(connId);
             if (itSet != _capabilitiesByConnection.end()) {
@@ -217,8 +247,7 @@ Core::hresult App2AppProviderImplementation::InvokeProvider(const Context& conte
             return Core::ERROR_UNKNOWN_KEY;
         }
 
-        // Store consumer correlation
-        const std::string correlationId = GenerateCorrelationId();
+        // Store consumer context keyed solely by connectionId (canonical)
         ConsumerContext cctx;
         cctx.requestId = static_cast<uint32_t>(context.requestId);
         cctx.connectionId = connId;
@@ -226,13 +255,17 @@ Core::hresult App2AppProviderImplementation::InvokeProvider(const Context& conte
         cctx.capability = capability;
         cctx.createdAt = Core::Time::Now();
 
-        _correlations.emplace(correlationId, std::move(cctx));
+        auto [ctxIt, inserted] = _contextsByConnection.insert_or_assign(connId, std::move(cctx));
+        if (!inserted) {
+            // insert_or_assign returns iterator; when value was assigned, inserted==false; we log overwrite
+            LOGWARN("InvokeProvider: overwrote existing context for connId=%u (non-unique?)", connId);
+        }
 
-        LOGINFO("InvokeProvider stored correlation: capability=%s correlationId=%s",
-                capability.c_str(), correlationId.c_str());
+        LOGINFO("InvokeProvider stored context: capability=%s connId=%u reqId=%u",
+                capability.c_str(), connId, static_cast<uint32_t>(context.requestId));
     }
 
-    // Routing to provider is AppGateway responsibility as per design; we just return success.
+    // Routing to provider is AppGateway's responsibility; nothing to call here.
     LOGTRACE("InvokeProvider exit: hr=%d", Core::ERROR_NONE);
     return Core::ERROR_NONE;
 }
@@ -254,26 +287,26 @@ Core::hresult App2AppProviderImplementation::HandleProviderResponse(const string
         return Core::ERROR_BAD_REQUEST;
     }
 
-    std::string correlationId;
-    if (!ExtractCorrelationIdFromPayload(payload, correlationId)) {
+    uint32_t connId = 0;
+    if (!ExtractConnectionIdFromPayload(payload, connId)) {
         error.code = Core::ERROR_BAD_REQUEST;
-        error.message = "Missing correlationId in payload";
-        LOGERR("HandleProviderResponse missing correlationId");
+        error.message = "Missing/invalid connectionId in payload";
+        LOGERR("HandleProviderResponse missing/invalid connectionId");
         return Core::ERROR_BAD_REQUEST;
     }
 
     ConsumerContext ctx;
     {
         std::lock_guard<std::mutex> guard(_lock);
-        auto it = _correlations.find(correlationId);
-        if (it == _correlations.end()) {
+        auto it = _contextsByConnection.find(connId);
+        if (it == _contextsByConnection.end()) {
             error.code = Core::ERROR_UNKNOWN_KEY;
-            error.message = "Unknown correlationId";
-            LOGWARN("HandleProviderResponse unknown correlationId=%s", correlationId.c_str());
+            error.message = "Unknown or expired connectionId";
+            LOGWARN("HandleProviderResponse unknown connectionId=%u", connId);
             return Core::ERROR_UNKNOWN_KEY;
         }
         ctx = it->second;
-        _correlations.erase(it);
+        _contextsByConnection.erase(it);
     }
 
     if (_gateway == nullptr) {
@@ -306,8 +339,7 @@ Core::hresult App2AppProviderImplementation::HandleProviderError(const string& p
                                                                  Error& error) {
     LOGTRACE("HandleProviderError enter: capability=%s payloadSize=%zu",
              capability.c_str(), payload.size());
-
-    // Behavior same as response; payload content indicates error semantics to consumer.
+    // Behavior identical to response; payload content indicates error semantics to consumer.
     return HandleProviderResponse(payload, capability, error);
 }
 
@@ -327,14 +359,11 @@ void App2AppProviderImplementation::CleanupByConnection(const uint32_t connectio
         _capabilitiesByConnection.erase(itSet);
     }
 
-    // Remove pending correlations for this connection
-    for (auto it = _correlations.begin(); it != _correlations.end(); ) {
-        if (it->second.connectionId == connectionId) {
-            LOGINFO("Erasing pending correlationId=%s for connId=%u", it->first.c_str(), connectionId);
-            it = _correlations.erase(it);
-        } else {
-            ++it;
-        }
+    // Remove pending context for this connection (if any)
+    auto itCtx = _contextsByConnection.find(connectionId);
+    if (itCtx != _contextsByConnection.end()) {
+        _contextsByConnection.erase(itCtx);
+        LOGINFO("Erased pending consumer context for connId=%u", connectionId);
     }
 
     LOGTRACE("CleanupByConnection exit");
