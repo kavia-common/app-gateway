@@ -5,25 +5,25 @@ project(App2AppProvider)
 
 set(PLUGIN_NAME App2AppProvider)
 
+# Exactly four-file implementation: only two .cpp are compiled
 add_library(${PLUGIN_NAME} SHARED
     src/App2AppProvider.cpp
-    src/ProviderRegistry.cpp
-    src/CorrelationStore.cpp
-    src/AppGatewayClient.cpp
+    src/App2AppProviderImplementation.cpp
 )
 
+# Include the plugin's own headers and the project root for IApp2AppProvider.h / IAppGateway.h / UtilsLogging.h
 target_include_directories(${PLUGIN_NAME}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../..     # repository root (contains IApp2AppProvider.h / IAppGateway.h / UtilsLogging.h)
 )
 
-# Thunder/WPEFramework linkage - these targets/names align with typical Thunder builds.
-# Adjust if your environment uses different target names.
+# Thunder/WPEFramework linkage
 find_package(WPEFramework REQUIRED)
 target_link_libraries(${PLUGIN_NAME}
     PRIVATE
         WPEFrameworkCore
-        WPEFrameworkProtocols
+        WPEFrameworkCOM
         WPEFrameworkPlugins
 )
 

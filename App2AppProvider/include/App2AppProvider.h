@@ -1,34 +1,32 @@
 #pragma once
 
-#include <core/JSON.h>
-#include <plugins/JSONRPC.h>
-#include <plugins/IDispatcher.h>
-#include <plugins/Plugin.h>
-#include <mutex>
-#include <memory>
-#include <string>
+// Thunder / WPEFramework
+#include <plugins/Module.h>
+#include <plugins/IPlugin.h>
+#include <plugins/IShell.h>
+#include <core/Services.h>
 
-#include "ProviderRegistry.h"
-#include "CorrelationStore.h"
-#include "AppGatewayClient.h"
+// Project interfaces and logging
+#include "IApp2AppProvider.h"
+#include "IAppGateway.h"
+#include "UtilsLogging.h"
+
+// Forward declaration
+namespace WPEFramework {
+namespace Plugin {
+    class App2AppProviderImplementation;
+} // namespace Plugin
+} // namespace WPEFramework
 
 namespace WPEFramework {
 namespace Plugin {
 
 /**
  * PUBLIC_INTERFACE
- * App2AppProvider Thunder plugin implementing provider pattern orchestration:
- * - register/unregister provider capabilities
- * - invoke provider for a consumer (create correlationId and track consumer context)
- * - accept provider responses/errors and route them back via AppGateway.respond
- *
- * JSON-RPC Methods:
- *  - org.rdk.ApptoAppProvider.registerProvider
- *  - org.rdk.ApptoAppProvider.invokeProvider
- *  - org.rdk.ApptoAppProvider.handleProviderResponse
- *  - org.rdk.ApptoAppProvider.handleProviderError
+ * App2AppProvider Thunder plugin entry. Exposes Exchange::IApp2AppProvider via COMRPC.
+ * Lifecycle and registration are handled here; all business logic is delegated to App2AppProviderImplementation.
  */
-class App2AppProvider : public PluginHost::IPlugin, public PluginHost::JSONRPC {
+class App2AppProvider final : public PluginHost::IPlugin, public PluginHost::IPluginExtended {
 public:
     App2AppProvider(const App2AppProvider&) = delete;
     App2AppProvider& operator=(const App2AppProvider&) = delete;
@@ -36,59 +34,59 @@ public:
     App2AppProvider();
     ~App2AppProvider() override;
 
-    // IPlugin lifecycle
-
+public:
     // PUBLIC_INTERFACE
     /**
-     * Initialize plugin, prepare AppGateway client, register JSON-RPC.
-     * Returns empty string on success, or non-empty error string.
+     * Initialize the plugin. Creates the implementation and wires AppGateway COMRPC.
+     * @param service IShell pointer provided by Thunder.
+     * @return Empty string on success, otherwise non-empty error message.
      */
     const string Initialize(PluginHost::IShell* service) override;
 
     // PUBLIC_INTERFACE
     /**
-     * Cleanup all state and release service reference.
+     * Deinitialize the plugin and release resources.
+     * @param service IShell pointer provided by Thunder.
      */
     void Deinitialize(PluginHost::IShell* service) override;
 
     // PUBLIC_INTERFACE
     /**
-     * Return plugin information string.
+     * Human-readable information about the plugin.
+     * @return Descriptive information string.
      */
     string Information() const override;
 
-    // Connection lifecycle hooks
-    void Attach(PluginHost::Channel& channel) override;
+    // PUBLIC_INTERFACE
+    /**
+     * WebSocket channel attached notification (used to track connection-scoped cleanup).
+     * @return true to accept, false to reject.
+     */
+    bool Attach(PluginHost::Channel& channel) override;
+
+    // PUBLIC_INTERFACE
+    /**
+     * WebSocket channel detached notification - used to cleanup connection-scoped registrations/correlations.
+     */
     void Detach(PluginHost::Channel& channel) override;
 
-private:
-    // JSON-RPC method handlers (return Core::ERROR_* codes)
-    uint32_t registerProvider(const Core::JSON::VariantContainer& params, Core::JSON::VariantContainer& response);
-    uint32_t invokeProvider(const Core::JSON::VariantContainer& params, Core::JSON::VariantContainer& response);
-    uint32_t handleProviderResponse(const Core::JSON::VariantContainer& params, Core::JSON::VariantContainer& response);
-    uint32_t handleProviderError(const Core::JSON::VariantContainer& params, Core::JSON::VariantContainer& response);
+public:
+    // Core::IUnknown implementation using interface map macros
+    BEGIN_INTERFACE_MAP(App2AppProvider)
+        INTERFACE_ENTRY(PluginHost::IPlugin)
+        INTERFACE_ENTRY(PluginHost::IPluginExtended)
+        // Expose IApp2AppProvider aggregated from the implementation object
+        INTERFACE_AGGREGATE(WPEFramework::Exchange::IApp2AppProvider, _implementation)
+    END_INTERFACE_MAP
 
-    // Helpers
-    static bool ExtractContext(const Core::JSON::VariantContainer& in,
-                               uint32_t& requestId,
-                               uint32_t& connectionId,
-                               string& appId,
-                               string* capability /*optional*/);
-
-    static bool ExtractPayloadCorrelation(const Core::JSON::VariantContainer& in,
-                                          string& capability,
-                                          string& payloadJson,
-                                          string& correlationId);
-
-    static uint32_t JsonRpcErrorInvalidParams();
-    static uint32_t JsonRpcErrorInvalidRequest();
+    // AddRef/Release explicitly for COM
+    uint32_t AddRef() const override;
+    uint32_t Release() const override;
 
 private:
-    PluginHost::IShell* _service { nullptr };
-    std::mutex _adminLock;
-    ProviderRegistry _providers;
-    CorrelationStore _correlations;
-    std::unique_ptr<AppGatewayClient> _appGateway;
+    PluginHost::IShell* _service;
+    App2AppProviderImplementation* _implementation;
+    mutable uint32_t _refCount;
 };
 
 } // namespace Plugin
