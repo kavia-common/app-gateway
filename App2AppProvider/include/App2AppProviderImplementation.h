@@ -1,17 +1,16 @@
 #pragma once
 
-// Thunder / WPEFramework
-#include <plugins/IShell.h>
+#include <com/IUnknown.h>
 #include <core/Time.h>
-
-// STL
-#include <cstdint>
-#include <mutex>
-#include <string>
+#include <core/JSON.h>
+#include <plugins/IShell.h>
+#include <interfaces/json/Module.h>
 #include <unordered_map>
 #include <unordered_set>
+#include <mutex>
+#include <atomic>
+#include <string>
 
-// Project interfaces and logging
 #include "IApp2AppProvider.h"
 #include "IAppGateway.h"
 #include "UtilsLogging.h"
@@ -21,97 +20,60 @@ namespace Plugin {
 
 /**
  * PUBLIC_INTERFACE
- * App2AppProviderImplementation is the concrete business-logic implementation of Exchange::IApp2AppProvider.
- * It maintains provider registry and consumer async contexts keyed by connectionId (uint32_t),
- * and communicates responses back to AppGateway via COMRPC.
+ * Concrete implementation of Exchange::IApp2AppProvider business logic.
+ * Maintains:
+ *  - Provider registry: capability -> ProviderEntry
+ *  - Reverse index: connectionId -> {capability}
+ *  - Correlations: correlationId -> ConsumerContext
+ * Interacts with AppGateway over COMRPC via Exchange::IAppGateway.
  */
-class App2AppProviderImplementation final : public Exchange::IApp2AppProvider {
+class App2AppProviderImplementation : public Exchange::IApp2AppProvider {
 public:
-    App2AppProviderImplementation() = delete;
     explicit App2AppProviderImplementation(PluginHost::IShell* service);
     ~App2AppProviderImplementation() override;
 
-    // Core::IUnknown
+    // IUnknown
     uint32_t AddRef() const override;
     uint32_t Release() const override;
     void* QueryInterface(const uint32_t id) override;
 
-public:
+    // Exchange::IApp2AppProvider
     // PUBLIC_INTERFACE
-    /**
-     * Register or unregister a provider for a capability.
-     * Context.connectionId must be a numeric string; it is parsed to uint32_t.
-     */
-    Core::hresult RegisterProvider(const Context& context /* @in */,
-                                   bool reg /* @in */,
-                                   const string& capability /* @in */,
-                                   Error& error /* @out */) override;
+    Core::hresult RegisterProvider(const Context& context,
+                                   bool reg,
+                                   const string& capability,
+                                   Error& error) override;
+
+    // PUBLIC_INTERFACE
+    Core::hresult InvokeProvider(const Context& context,
+                                 const string& capability,
+                                 Error& error) override;
+
+    // PUBLIC_INTERFACE
+    Core::hresult HandleProviderResponse(const string& payload,
+                                         const string& capability,
+                                         Error& error) override;
+
+    // PUBLIC_INTERFACE
+    Core::hresult HandleProviderError(const string& payload,
+                                      const string& capability,
+                                      Error& error) override;
 
     // PUBLIC_INTERFACE
     /**
-     * Store consumer async context keyed by connectionId and validate provider existence.
-     * AppGateway is responsible for the routing to the provider.
+     * Remove any providers and pending correlations bound to a connection.
      */
-    Core::hresult InvokeProvider(const Context& context /* @in */,
-                                 const string& capability /* @in */,
-                                 Error& error /* @out */) override;
-
-    // PUBLIC_INTERFACE
-    /**
-     * Handle a provider response. The payload is opaque JSON; this implementation extracts
-     * the connectionId by parsing the payload (looks for "contextEcho.connectionId",
-     * "context.connectionId", or top-level "connectionId").
-     * The stored ConsumerContext is looked up by the parsed connectionId and forwarded back
-     * to AppGateway via IAppGateway::Respond.
-     */
-    Core::hresult HandleProviderResponse(const string& payload /* @in @opaque */,
-                                         const string& capability /* @in */,
-                                         Error& error /* @out */) override;
-
-    // PUBLIC_INTERFACE
-    /**
-     * Handle a provider error; semantics identical to HandleProviderResponse, with payload
-     * indicating error details for the consumer.
-     */
-    Core::hresult HandleProviderError(const string& payload /* @in @opaque */,
-                                      const string& capability /* @in */,
-                                      Error& error /* @out */) override;
-
-    // PUBLIC_INTERFACE
-    /**
-     * Cleanup any provider registrations and pending consumer contexts associated with this connection.
-     */
-    void CleanupByConnection(const uint32_t connectionId);
+    void CleanupByConnection(uint32_t connectionId);
 
 private:
-    // Helpers
-
-    /**
-     * Parse a numeric connectionId from string form (decimal). Returns true on success.
-     */
-    bool ParseConnectionId(const std::string& in, uint32_t& out) const;
-
-    /**
-     * Attempt to extract a connectionId (string) from an opaque JSON payload and parse it to uint32_t.
-     * Search order:
-     *  - payload.contextEcho.connectionId (string)
-     *  - payload.context.connectionId (string)
-     *  - payload.connectionId (string)
-     * Returns true on success.
-     */
-    bool ExtractConnectionIdFromPayload(const std::string& payload, uint32_t& outConnectionId) const;
-
-private:
-    // Provider registry model
     struct ProviderEntry {
         std::string appId;
         uint32_t connectionId { 0 };
         Core::Time registeredAt;
     };
 
-    // Pending consumer context model
     struct ConsumerContext {
-        uint32_t requestId { 0 };
+        int requestId { 0 };
         uint32_t connectionId { 0 };
         std::string appId;
         std::string capability;
@@ -119,14 +81,28 @@ private:
     };
 
 private:
-    mutable uint32_t _refCount { 1 };
-    PluginHost::IShell* _service { nullptr };
-    Exchange::IAppGateway* _gateway { nullptr };
+    bool ParseConnectionId(const std::string& in, uint32_t& outConnId) const;
+    std::string GenerateCorrelationId(); // NowTicks + counter as per backup impl
+    bool EnsureGateway();
 
+    Core::hresult HandleProviderResultLike_(const std::string& payload,
+                                            const std::string& capability,
+                                            bool isError,
+                                            Error& error);
+
+private:
+    mutable std::atomic<uint32_t> _refCount {1};
+    PluginHost::IShell* _service { nullptr };
+    Exchange::IAppGateway* _gateway { nullptr }; // held COM pointer
+
+    // Registry/correlation state
     mutable std::mutex _lock;
     std::unordered_map<std::string, ProviderEntry> _capabilityToProvider;
     std::unordered_map<uint32_t, std::unordered_set<std::string>> _capabilitiesByConnection;
-    std::unordered_map<uint32_t, ConsumerContext> _contextsByConnection;
+    std::unordered_map<std::string, ConsumerContext> _correlations;
+
+    // Correlation ID counter (for ticks-counter pattern)
+    std::atomic<uint64_t> _corrCounter {0};
 };
 
 } // namespace Plugin

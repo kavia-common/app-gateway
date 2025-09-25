@@ -1,93 +1,136 @@
 #pragma once
 
-// Thunder / WPEFramework
-#include <plugins/Module.h>
+/*
+ * App2AppProvider Thunder plugin: lifecycle and interface plumbing.
+ * This class exposes Exchange::IApp2AppProvider via QueryInterface and delegates
+ * business logic to App2AppProviderImplementation.
+ */
+
+#include <plugins/IPlugin.h>
 #include <plugins/IPlugin.h>
 #include <plugins/IShell.h>
-#include <core/Services.h>
+#include <plugins/Plugin.h>
+#include <memory>
+#include <atomic>
+#include <string>
 
-// Project interfaces and logging
-#include "IApp2AppProvider.h"
-#include "IAppGateway.h"
+#include "App2AppProviderImplementation.h"
 #include "UtilsLogging.h"
-
-// Forward declaration
-namespace WPEFramework {
-namespace Plugin {
-    class App2AppProviderImplementation;
-} // namespace Plugin
-} // namespace WPEFramework
 
 namespace WPEFramework {
 namespace Plugin {
 
 /**
  * PUBLIC_INTERFACE
- * App2AppProvider Thunder plugin entry. Exposes Exchange::IApp2AppProvider via COMRPC.
- * Lifecycle and registration are handled here; all business logic is delegated to App2AppProviderImplementation.
+ * App2AppProvider plugin entry class.
+ * - Implements PluginHost::IPlugin and IPluginExtended.
+ * - Delegates IApp2AppProvider to App2AppProviderImplementation.
  */
-class App2AppProvider final : public PluginHost::IPlugin, public PluginHost::IPluginExtended {
+class App2AppProvider : public PluginHost::IPlugin, public PluginHost::IPluginExtended {
 public:
-    App2AppProvider(const App2AppProvider&) = delete;
-    App2AppProvider& operator=(const App2AppProvider&) = delete;
+    App2AppProvider()
+        : _service(nullptr)
+        , _refCount(1) {
+        LOGTRACE("App2AppProvider constructed");
+    }
 
-    App2AppProvider();
-    ~App2AppProvider() override;
+    ~App2AppProvider() override {
+        LOGTRACE("App2AppProvider destructed");
+    }
 
-public:
+    // IUnknown
+    uint32_t AddRef() const override {
+        return ++_refCount;
+    }
+    uint32_t Release() const override {
+        uint32_t result = --_refCount;
+        if (result == 0) {
+            delete const_cast<App2AppProvider*>(this);
+        }
+        return result;
+    }
+
+    void* QueryInterface(const uint32_t id) override {
+        if (id == PluginHost::IPlugin::ID) {
+            AddRef();
+            return static_cast<PluginHost::IPlugin*>(this);
+        }
+        if (id == PluginHost::IPluginExtended::ID) {
+            AddRef();
+            return static_cast<PluginHost::IPluginExtended*>(this);
+        }
+        if (id == Exchange::IApp2AppProvider::ID) {
+            if (_impl) {
+                _impl->AddRef();
+                return static_cast<Exchange::IApp2AppProvider*>(_impl.get());
+            }
+            return nullptr;
+        }
+        return nullptr;
+    }
+
     // PUBLIC_INTERFACE
     /**
-     * Initialize the plugin. Creates the implementation and wires AppGateway COMRPC.
-     * @param service IShell pointer provided by Thunder.
-     * @return Empty string on success, otherwise non-empty error message.
+     * Initialize the plugin and wire the implementation.
      */
-    const string Initialize(PluginHost::IShell* service) override;
+    const string Initialize(PluginHost::IShell* service) override {
+        LOGTRACE("Initialize called");
+        _service = service;
+        try {
+            _impl = std::make_unique<App2AppProviderImplementation>(_service);
+        } catch (const std::exception& e) {
+            LOGERR("Failed to create implementation: %s", e.what());
+            return string("App2AppProvider: implementation creation failed");
+        }
+        return string();
+    }
 
     // PUBLIC_INTERFACE
     /**
      * Deinitialize the plugin and release resources.
-     * @param service IShell pointer provided by Thunder.
      */
-    void Deinitialize(PluginHost::IShell* service) override;
+    void Deinitialize(PluginHost::IShell* /*service*/) override {
+        LOGTRACE("Deinitialize called");
+        _impl.reset();
+        _service = nullptr;
+    }
 
     // PUBLIC_INTERFACE
     /**
-     * Human-readable information about the plugin.
-     * @return Descriptive information string.
+     * Provide plugin metadata (optional).
      */
-    string Information() const override;
+    string Information() const override {
+        return string();
+    }
 
     // PUBLIC_INTERFACE
     /**
-     * WebSocket channel attached notification (used to track connection-scoped cleanup).
-     * @return true to accept, false to reject.
+     * Channel attach hook (not used, return true).
      */
-    bool Attach(PluginHost::Channel& channel) override;
+    bool Attach(PluginHost::Channel& /*channel*/) override {
+        return true;
+    }
 
     // PUBLIC_INTERFACE
     /**
-     * WebSocket channel detached notification - used to cleanup connection-scoped registrations/correlations.
+     * Channel detach hook; cleanup any state bound to the connection.
      */
-    void Detach(PluginHost::Channel& channel) override;
-
-public:
-    // Core::IUnknown implementation using interface map macros
-    BEGIN_INTERFACE_MAP(App2AppProvider)
-        INTERFACE_ENTRY(PluginHost::IPlugin)
-        INTERFACE_ENTRY(PluginHost::IPluginExtended)
-        // Expose IApp2AppProvider aggregated from the implementation object
-        INTERFACE_AGGREGATE(WPEFramework::Exchange::IApp2AppProvider, _implementation)
-    END_INTERFACE_MAP
-
-    // AddRef/Release explicitly for COM
-    uint32_t AddRef() const override;
-    uint32_t Release() const override;
+    void Detach(PluginHost::Channel& channel) override {
+        const uint32_t connId = channel.Id();
+        LOGINFO("Detach: cleanup for connectionId=%u", connId);
+        if (_impl) {
+            _impl->CleanupByConnection(connId);
+        }
+    }
 
 private:
     PluginHost::IShell* _service;
-    App2AppProviderImplementation* _implementation;
-    mutable uint32_t _refCount;
+    std::unique_ptr<App2AppProviderImplementation> _impl;
+    mutable std::atomic<uint32_t> _refCount;
 };
 
 } // namespace Plugin
 } // namespace WPEFramework
+
+// Register this plugin with Thunder
+SERVICE_REGISTRATION(WPEFramework::Plugin::App2AppProvider, 1, 0)
