@@ -1,32 +1,36 @@
+/*
+ * If not stated otherwise in this file or this component's LICENSE file the
+ * following copyright and licenses apply:
+ *
+ * Copyright 2023 RDK Management
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #pragma once
 
-// Thunder / WPEFramework
-#include <plugins/Module.h>
-#include <plugins/IPlugin.h>
-#include <plugins/IShell.h>
-#include <core/Services.h>
-
-// Project interfaces and logging
-#include "IApp2AppProvider.h"
-#include "IAppGateway.h"
-#include "UtilsLogging.h"
-
-// Forward declaration
-namespace WPEFramework {
-namespace Plugin {
-    class App2AppProviderImplementation;
-} // namespace Plugin
-} // namespace WPEFramework
+#include "Module.h"
+#include <interfaces/json/JsonData_App2AppProvider.h>
+#include "ProviderRegistry.h"
+#include "CorrelationStore.h"
+#include "AppGatewayClient.h"
 
 namespace WPEFramework {
 namespace Plugin {
 
-/**
- * PUBLIC_INTERFACE
- * App2AppProvider Thunder plugin entry. Exposes Exchange::IApp2AppProvider via COMRPC.
- * Lifecycle and registration are handled here; all business logic is delegated to App2AppProviderImplementation.
- */
-class App2AppProvider final : public PluginHost::IPlugin, public PluginHost::IPluginExtended {
+class App2AppProvider 
+    : public PluginHost::IPlugin
+    , public PluginHost::JSONRPC {
 public:
     App2AppProvider(const App2AppProvider&) = delete;
     App2AppProvider& operator=(const App2AppProvider&) = delete;
@@ -34,59 +38,33 @@ public:
     App2AppProvider();
     ~App2AppProvider() override;
 
-public:
-    // PUBLIC_INTERFACE
-    /**
-     * Initialize the plugin. Creates the implementation and wires AppGateway COMRPC.
-     * @param service IShell pointer provided by Thunder.
-     * @return Empty string on success, otherwise non-empty error message.
-     */
+    // IPlugin interface implementation
     const string Initialize(PluginHost::IShell* service) override;
-
-    // PUBLIC_INTERFACE
-    /**
-     * Deinitialize the plugin and release resources.
-     * @param service IShell pointer provided by Thunder.
-     */
     void Deinitialize(PluginHost::IShell* service) override;
-
-    // PUBLIC_INTERFACE
-    /**
-     * Human-readable information about the plugin.
-     * @return Descriptive information string.
-     */
     string Information() const override;
 
-    // PUBLIC_INTERFACE
-    /**
-     * WebSocket channel attached notification (used to track connection-scoped cleanup).
-     * @return true to accept, false to reject.
-     */
-    bool Attach(PluginHost::Channel& channel) override;
-
-    // PUBLIC_INTERFACE
-    /**
-     * WebSocket channel detached notification - used to cleanup connection-scoped registrations/correlations.
-     */
+    // Per-connection lifecycle
+    void Attach(PluginHost::Channel& channel) override;
     void Detach(PluginHost::Channel& channel) override;
 
-public:
-    // Core::IUnknown implementation using interface map macros
     BEGIN_INTERFACE_MAP(App2AppProvider)
         INTERFACE_ENTRY(PluginHost::IPlugin)
-        INTERFACE_ENTRY(PluginHost::IPluginExtended)
-        // Expose IApp2AppProvider aggregated from the implementation object
-        INTERFACE_AGGREGATE(WPEFramework::Exchange::IApp2AppProvider, _implementation)
+        INTERFACE_ENTRY(PluginHost::IDispatcher)
     END_INTERFACE_MAP
 
-    // AddRef/Release explicitly for COM
-    uint32_t AddRef() const override;
-    uint32_t Release() const override;
+private:
+    // JSON-RPC handlers
+    uint32_t registerProvider(const JsonData::App2AppProvider::RegisterParamsData& params);
+    uint32_t invokeProvider(const JsonData::App2AppProvider::InvokeParamsData& params);
+    uint32_t handleProviderResponse(const JsonData::App2AppProvider::HandleResponseParamsData& params);
+    uint32_t handleProviderError(const JsonData::App2AppProvider::HandleErrorParamsData& params);
 
 private:
     PluginHost::IShell* _service;
-    App2AppProviderImplementation* _implementation;
-    mutable uint32_t _refCount;
+    Core::CriticalSection _adminLock;
+    ProviderRegistry _providers;
+    CorrelationStore _correlations;
+    std::unique_ptr<AppGatewayClient> _appGateway;
 };
 
 } // namespace Plugin

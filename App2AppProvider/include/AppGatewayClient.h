@@ -1,37 +1,42 @@
+/*
+ * If not stated otherwise in this file or this component's LICENSE file the
+ * following copyright and licenses apply:
+ *
+ * Copyright 2023 RDK Management
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #pragma once
 
-#include <plugins/IDispatcher.h>
-#include <plugins/Plugin.h>
-#include <core/JSON.h>
-#include <string>
+#include "Module.h"
 #include "CorrelationStore.h"
 
 namespace WPEFramework {
 namespace Plugin {
 
-/**
- * PUBLIC_INTERFACE
- * AppGatewayClient forwards responses to applications via org.rdk.AppGateway.respond.
- *
- * Build a proper parameters JSON object:
- * {
- *   "context": { "requestId": <uint32>, "connectionId": "<uint32-as-string>", "appId": "<appId>" },
- *   "payload": <opaque JSON forwarded from provider>
- * }
- */
 class AppGatewayClient {
 public:
-    explicit AppGatewayClient(PluginHost::IShell* service) : _service(service) {}
+    explicit AppGatewayClient(PluginHost::IShell* service);
+    AppGatewayClient(const AppGatewayClient&) = delete;
+    AppGatewayClient& operator=(const AppGatewayClient&) = delete;
+    ~AppGatewayClient() = default;
 
-    // PUBLIC_INTERFACE
-    /**
-     * Forward a payload (result or error) to the originating consumer using AppGateway.respond.
-     * Returns Core::ERROR_*.
-     */
-    uint32_t Respond(const CorrelationStore::ConsumerContext& ctx, const std::string& payloadJson);
+    uint32_t Respond(const CorrelationStore::ConsumerContext& ctx,
+                    const string& payloadJson);
 
 private:
-    PluginHost::IShell* _service { nullptr };
+    PluginHost::IShell* _service;
 };
 
 } // namespace Plugin
