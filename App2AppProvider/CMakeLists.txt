@@ -1,4 +1,4 @@
-# App2AppProvider CMake configuration
+#App2AppProvider CMake configuration
 cmake_minimum_required(VERSION 3.16)
 
 project(App2AppProvider)
